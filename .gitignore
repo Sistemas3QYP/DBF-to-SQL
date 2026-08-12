@@ -1,0 +1,10 @@
+/.venv/
+/logs/*.log
+/runtime/*.lock
+__pycache__/
+.pytest_cache/
+*.pyc
+*.pyo
+.mypy_cache/
+.coverage
+htmlcov/
