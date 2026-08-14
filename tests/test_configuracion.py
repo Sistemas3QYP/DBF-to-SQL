@@ -8,7 +8,7 @@ from app.excepciones import ErrorConfiguracion
 
 def _config_base(dbc_path: str) -> dict:
     return {
-        "aplicacion": {"ambiente": "PRUEBAS", "empresa": "EMP43"},
+        "aplicacion": {"ambiente": "PRODUCCION", "empresa": "EMP64"},
         "foxpro": {
             "dbc": dbc_path,
             "provider": "VFPOLEDB.1",
@@ -16,7 +16,7 @@ def _config_base(dbc_path: str) -> dict:
         },
         "sql_server": {
             "servidor": "SRVERPQYPN\\SQLEXPRESS",
-            "base_datos": "IntegracionSAIEmp43",
+            "base_datos": "IntegracionSAIEmp64",
             "driver": "ODBC Driver 18 for SQL Server",
             "autenticacion_windows": True,
             "encrypt": True,
@@ -39,14 +39,14 @@ def _escribir_config(tmp_path, datos: dict):
 
 
 def test_configuracion_valida(tmp_path):
-    dbc = tmp_path / "EMP43" / "sai.DBC"
+    dbc = tmp_path / "EMP64" / "sai.DBC"
     dbc.parent.mkdir(parents=True)
     dbc.write_text("x")
 
     ruta = _escribir_config(tmp_path, _config_base(str(dbc)))
     cfg = cargar_configuracion(ruta)
 
-    assert cfg.empresa == "EMP43"
+    assert cfg.empresa == "EMP64"
     assert cfg.agentes == (3101, 3102, 3103, 3104)
 
 
@@ -61,15 +61,14 @@ def test_falla_si_dbc_no_corresponde_a_empresa(tmp_path):
 
 
 def test_falla_si_no_existe_el_dbc(tmp_path):
-    dbc_inexistente = tmp_path / "EMP43" / "sai.DBC"
+    dbc_inexistente = tmp_path / "EMP64" / "sai.DBC"
     ruta = _escribir_config(tmp_path, _config_base(str(dbc_inexistente)))
     with pytest.raises(ErrorConfiguracion):
         cargar_configuracion(ruta)
 
 
 def test_falla_si_autenticacion_windows_es_false(tmp_path):
-    # CORREGIDO: antes este flag se leía y se ignoraba en silencio.
-    dbc = tmp_path / "EMP43" / "sai.DBC"
+    dbc = tmp_path / "EMP64" / "sai.DBC"
     dbc.parent.mkdir(parents=True)
     dbc.write_text("x")
 
@@ -82,7 +81,7 @@ def test_falla_si_autenticacion_windows_es_false(tmp_path):
 
 
 def test_falla_si_lista_de_agentes_vacia(tmp_path):
-    dbc = tmp_path / "EMP43" / "sai.DBC"
+    dbc = tmp_path / "EMP64" / "sai.DBC"
     dbc.parent.mkdir(parents=True)
     dbc.write_text("x")
 

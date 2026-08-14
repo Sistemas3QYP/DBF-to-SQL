@@ -9,13 +9,13 @@ from app.sincronizador import Sincronizador
 
 def _cfg() -> ConfiguracionAplicacion:
     return ConfiguracionAplicacion(
-        ambiente="PRUEBAS",
-        empresa="EMP43",
-        dbc=Path("C:/VSAI/Empresas/EMP43/sai.DBC"),
+        ambiente="PRODUCCION",
+        empresa="EMP64",
+        dbc=Path("C:/VSAI/Empresas/EMP64/sai.DBC"),
         provider="VFPOLEDB.1",
         collating_sequence="Machine",
         sql_servidor="SRVERPQYPN\\SQLEXPRESS",
-        sql_base_datos="IntegracionSAIEmp43",
+        sql_base_datos="IntegracionSAIEmp64",
         sql_driver="ODBC Driver 18 for SQL Server",
         autenticacion_windows=True,
         encrypt=True,
@@ -63,7 +63,7 @@ class SqlFalso:
 
     def sincronizar(self, id_ejecucion):
         if self.staging_cargado is None:
-            return 1, 0, 0
+            return 0, 0, 0
         return len(self.staging_cargado), 0, 0
 
 def _logger():

@@ -167,7 +167,7 @@ def normalizar_pedido(
       no_ped, cve_suc, lugar, hora_ped, status, status2,
       f_alta_ped, fecha_ent, cve_age, cve_cte, subt_ped, cvede4, cvede5
     """
-    if len(fila) < 13:
+    if len(fila) != 13:
         raise ErrorValidacionDatos(
             f"Se esperaban exactamente 13 columnas, pero se recibieron: {len(fila)}"
         )
