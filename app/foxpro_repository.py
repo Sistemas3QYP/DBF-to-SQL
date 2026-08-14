@@ -19,11 +19,7 @@ class FoxProRepository:
         return (
             f"Provider={self.cfg.provider};"
             f"Data Source={self.cfg.dbc};"
-            f"Collating Sequence={self.cfg.collating_sequence};"
             f"Exclusive=No;"
-            f"BackgroundFetch=No;"
-            f"Null=Yes;"
-            f"Deleted=Yes;"
         )
 
     def _abrir_conexion(self):
@@ -74,48 +70,46 @@ class FoxProRepository:
             raise ErrorConsultaFoxPro(
                 "No hay agentes configurados para la extracción."
             )
+
         conn = None
         cur = None
         try:
             conn = self._abrir_conexion()
             cur = conn.cursor()
 
-            placeholders_agentes = " OR ".join(
-                ["cve_age = ?" for _ in self.cfg.agentes]
+            agentes = ",".join(
+                str(agente)
+                for agente in self.cfg.agentes
             )
+
+            fecha_foxpro = fecha_desde.strftime("%Y-%m-%d")
+
             sql = f"""
-                SELECT
-                    no_ped,
-                    cve_suc,
-                    lugar,
-                    hora_ped,
-                    status,
-                    status2,
-                    f_alta_ped,
-                    fecha_ent,
-                    cve_age,
-                    cve_cte,
-                    subt_ped,
-                    cvede4,
-                    cvede5
-                FROM pedidoc
-                WHERE lugar = ?
-                  AND ({placeholders_agentes})
-                  AND f_alta_ped >= ?
+            SELECT
+                no_ped,
+                cve_suc,
+                lugar,
+                hora_ped,
+                status,
+                status2,
+                f_alta_ped,
+                fecha_ent,
+                cve_age,
+                cve_cte,
+                subt_ped,
+                cvede4,
+                cvede5
+            FROM pedidoc
+            WHERE lugar = '{self.cfg.lugar}'
+                AND cve_age IN ({agentes})
+                AND f_alta_ped >= {{^{fecha_foxpro}}}
             """
-            parametros = (
-                self.cfg.lugar,
-                *self.cfg.agentes,
-                fecha_desde,
-            )
-            cur.execute(sql, parametros)
+            cur.execute(sql)
             filas = cur.fetchall()
 
             if filas is None:
-                # raise ErrorConsultaFoxPro(
-                #     "La consulta FoxPro no devolvió resultados."
-                # )
                 return []
+
             return [
                 tuple(fila)
                 for fila in filas

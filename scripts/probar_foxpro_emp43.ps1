@@ -6,8 +6,8 @@
 
 $ErrorActionPreference = 'Stop'
 
-if (:Is64BitProcess) {
-throw @'
+if ([Environment]::Is64BitProcess) {
+    throw @'
 Este script debe ejecutarse con PowerShell de 32 bits:
 
 %SystemRoot%\SysWOW64\WindowsPowerShell\v1.0\powershell.exe
@@ -20,24 +20,16 @@ C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -File .\scripts\probar
 $dbc = 'C:\VSAI\Empresas\EMP43\sai.DBC'
 
 if (-not (Test-Path -LiteralPath $dbc -PathType Leaf)) {
-throw "No existe el archivo DBC: $dbc"
+    throw "No existe el archivo DBC: $dbc"
 }
 
-# se usa "Exclusive=No;BackgroundFetch=No;" (misma cadena que
-# se validó como exitosa en las pruebas de conectividad) propiedad reconocida por VFPOLEDB.
 $connectionString = @(
 'Provider=VFPOLEDB.1'
-"Data Source=$dbc"
-'Collating Sequence=Machine'
+"Data Source=C:\VSAI\Empresas\EMP43\sai.DBC"
 'Exclusive=No'
-'BackgroundFetch=No'
-'Null=Yes'
-'Deleted=Yes'
 ) -join ';'
 
-$conn = New-Object System.Data.OleDb.OleDbConnection(
-"$connectionString;"
-)
+$conn = New-Object System.Data.OleDb.OleDbConnection("$connectionString;")
 
 $cmd = $null
 $reader = $null
@@ -46,28 +38,16 @@ try {
     $conn.Open()
     $cmd = $conn.CreateCommand()
     $cmd.CommandTimeout = 15
-    $cmd.CommandText = 'SELECT TOP 5 no_ped, cve_suc, lugar, cve_age, f_alta_ped FROM pedidoc ORDER BY no_ped, cve_suc'
+    $cmd.CommandText = 'SELECT COUNT(*) AS Total FROM pedidoc WHERE lugar = "GENERAL" AND cve_age IN (3101,3102,3103,3104) AND f_alta_ped >= {^2026-07-01}'
     $reader = $cmd.ExecuteReader()
     $table = New-Object System.Data.DataTable
     $table.Load($reader)
     $table | Format-Table -AutoSize
     Write-Host "Conexión FoxPro EMP43 exitosa. Filas de prueba: $($table.Rows.Count)"
 }
-catch {
-    throw
-}
 finally {
-    if ($null -ne $reader) {
-        $reader.Dispose()
-    }
-    
-    if ($null -ne $cmd) {
-        $cmd.Dispose()
-    }
-    
-    if ($conn.State -ne 'Closed') {
-        $conn.Close()
-    }
-    
+    if ($null -ne $reader) { $reader.Dispose() }
+    if ($null -ne $cmd) { $cmd.Dispose() }
+    if ($conn.State -ne 'Closed') { $conn.Close() }
     $conn.Dispose()
 }

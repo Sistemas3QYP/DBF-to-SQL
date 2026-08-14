@@ -76,6 +76,12 @@ def hora(v: Any) -> time | None:
     if valor in {"", "0", "0000", "00:00", "00:00:00"}:
         return None
 
+    if ":" in valor:
+        try:
+            return time.fromisoformat(valor).replace(second=0, microsecond=0)
+        except ValueError as e:
+            raise ErrorValidacionDatos(f"Hora inválida: {v}") from e
+        
     s = valor.replace(":", "")
     try:
         n = int(float(s))

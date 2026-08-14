@@ -2,8 +2,8 @@
 $ErrorActionPreference = 'Stop'
 
 $name   = 'Integracion SAI EMP43'
-$cmd    = 'C:\Integraciones\SAI\scripts\ejecutar_emp43.cmd'
-$user   = 'QYPN\CuentaServicio'
+$cmd    = 'C:\Integraciones\scripts\ejecutar_emp43.cmd'
+$user   = 'qypn\sistemas03'
 $cmdExe = "$env:SystemRoot\System32\cmd.exe"
 
 if ($user -eq 'QYPN\CuentaServicio') {
@@ -17,7 +17,7 @@ if (-not (Test-Path -LiteralPath $cmd -PathType Leaf)) {
 $action = New-ScheduledTaskAction `
     -Execute $cmdExe `
     -Argument "/d /c `"$cmd`"" `
-    -WorkingDirectory 'C:\Integraciones\SAI'
+    -WorkingDirectory 'C:\Integraciones'
 
 $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).Date `
     -RepetitionInterval (New-TimeSpan -Minutes 5) `
@@ -40,7 +40,7 @@ Register-ScheduledTask `
     -Action $action `
     -Trigger $trigger `
     -Settings $settings `
-    -Description 'Sincroniza pedidos EMP43 cada 5 minutos (FoxPro → SQL Server)' `
+    -Description 'Sincroniza pedidos EMP43 cada 5 minutos (FoxPro a SQL Server)' `
     -User $user `
     -Password $cred.GetNetworkCredential().Password `
     -RunLevel Highest `

@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-set "BASE=C:\Integraciones\SAI"
+set "BASE=C:\Integraciones"
 set "PYTHON=%BASE%\.venv\Scripts\python.exe"
 set "CONFIG=%BASE%\config\emp43.json"
 

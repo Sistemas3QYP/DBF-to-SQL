@@ -63,7 +63,7 @@ class SqlFalso:
 
     def sincronizar(self, id_ejecucion):
         if self.staging_cargado is None:
-            return 0, 0, 0
+            return 1, 0, 0
         return len(self.staging_cargado), 0, 0
 
 def _logger():

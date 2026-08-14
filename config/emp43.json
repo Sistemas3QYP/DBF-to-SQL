@@ -5,8 +5,7 @@
   },
   "foxpro": {
     "dbc": "C:\\VSAI\\Empresas\\EMP43\\sai.DBC",
-    "provider": "VFPOLEDB.1",
-    "collating_sequence": "Machine"
+    "provider": "VFPOLEDB.1"
   },
   "sql_server": {
     "servidor": "SRVERPQYPN\\SQLEXPRESS",
@@ -24,7 +23,7 @@
       3103,
       3104
     ],
-    "fecha_inicial": "2026-08-01",
+    "fecha_inicial": "2026-07-01",
     "ventana_dias": 4,
     "tamano_lote": 250,
     "retencion_staging_dias": 7
