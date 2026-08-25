@@ -77,11 +77,23 @@ def main(argv: list[str] | None = None) -> int:
             ).ejecutar(id_ejec)
 
             logger.info(
-                "Fin correcto | estado=%s | extraídos=%s | insertados=%s | actualizados=%s | intentos=%s",
+                "Fin correcto | estado=%s | "
+                "pedidos_extraídos=%s | "
+                "pedidos_insertados=%s | "
+                "pedidos_actualizados=%s | "
+                "facturas_extraídas=%s | "
+                "facturas_actualizadas=%s | "
+                "facturas_sin_cambios=%s | "
+                "facturas_sin_pedido=%s | "
+                "intentos=%s",
                 resultado.estado,
                 resultado.extraidos,
                 resultado.insertados,
                 resultado.actualizados,
+                resultado.facturas_extraidas,
+                resultado.facturas_actualizadas,
+                resultado.facturas_sin_cambios,
+                resultado.facturas_sin_pedido,
                 resultado.intentos,
             )
             return 0

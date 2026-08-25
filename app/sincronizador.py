@@ -17,8 +17,11 @@ from .modelos import (
     ResultadoSincronizacion,
 )
 from .normalizacion import (
+    consolidar_facturas,
+    normalizar_factura_pedido,
     normalizar_pedido,
     validar_lote,
+    validar_lote_facturas,
 )
 from .reintentos import ejecutar_con_reintentos
 
@@ -43,9 +46,26 @@ class Sincronizador:
 
         hoy = date.today()
 
-        es_inicial = not self.sql.hay_ejecucion_completada()
+        es_inicial = (
+            not self.sql.hay_ejecucion_completada()
+        )
 
-        fecha_desde = (
+        fecha_desde_pedidos = (
+            self.cfg.fecha_inicial
+            if es_inicial
+            else max(
+                self.cfg.fecha_inicial,
+                hoy - timedelta(
+                    days=self.cfg.ventana_dias
+                ),
+            )
+        )
+
+        # El proceso de facturación usa una ventana propia basada en
+        # falta_fac. Para la primera ejecución general se utiliza la
+        # fecha inicial; en posteriores ejecuciones se usan cuatro días.
+        
+        fecha_desde_facturas = (
             self.cfg.fecha_inicial
             if es_inicial
             else max(
@@ -63,124 +83,233 @@ class Sincronizador:
         )
 
         self.log.info(
-            "Iniciando ejecución %s | tipo=%s | desde=%s",
+            "Iniciando ejecución %s | tipo=%s | "
+            "pedidos_desde=%s | facturas_desde=%s",
             id_ejecucion,
             tipo,
-            fecha_desde,
+            fecha_desde_pedidos,
+            fecha_desde_facturas,
         )
 
         try:
             self.sql.iniciar(
                 id_ejecucion,
-                fecha_desde,
+                fecha_desde_pedidos,
                 tipo,
             )
 
         except ErrorConexionSQL:
             self.log.exception(
-                "No fue posible registrar inicio en bitácora SQL"
+                "No fue posible registrar inicio "
+                "en bitácora SQL."
             )
             raise
 
         intentos = 1
         extraidos = 0
         insertados = 0
-        actualizados = 0
+        actualizados_pedidos = 0
+        facturas_extraidas = 0
+        facturas_actualizadas = 0
+        facturas_sin_cambios = 0
+        facturas_sin_pedido = 0
 
         try:
-            filas, intentos = ejecutar_con_reintentos(
-                lambda: self.fox.extraer(
-                    fecha_desde
-                ),
-                self.cfg.reintentos_maximos,
-                self.cfg.espera_segundos,
-                self.fox.es_transitorio,
-                self.log,
+            # PROCESO A: SINCRONIZACIÓN DE PEDIDOS
+            filas_pedidos, intentos_pedidos = (
+                ejecutar_con_reintentos(
+                    lambda: self.fox.extraer(
+                        fecha_desde_pedidos
+                    ),
+                    self.cfg.reintentos_maximos,
+                    self.cfg.espera_segundos,
+                    self.fox.es_transitorio,
+                    self.log,
+                )
             )
 
-            extraidos = len(filas)
+            intentos = max(
+                intentos,
+                intentos_pedidos,
+            )
 
-            if not filas:
-                self.sql.finalizar(
+            extraidos = len(filas_pedidos)
+
+            if filas_pedidos:
+                self.log.info(
+                    "Extraídos %s pedidos de FoxPro.",
+                    extraidos,
+                )
+
+                pedidos = [
+                    agregar_hash(
+                        normalizar_pedido(
+                            tuple(fila)
+                        )
+                    )
+                    for fila in filas_pedidos
+                ]
+
+                validar_lote(
+                    pedidos,
+                    self.cfg.lugar,
+                    self.cfg.agentes,
+                )
+
+                self.sql.cargar_staging(
                     id_ejecucion,
-                    estado="SIN_REGISTROS",
-                    extraidos=0,
-                    insertados=0,
-                    actualizados=0,
-                    intentos=intentos,
+                    pedidos,
+                )
+
+                (
+                    insertados,
+                    actualizados_pedidos,
+                    observados_sin_cambios,
+                ) = self.sql.sincronizar(
+                    id_ejecucion
                 )
 
                 self.log.info(
-                    "Sin registros que cumplan los filtros"
+                    "Pedidos sincronizados | "
+                    "insertados=%s | actualizados=%s | "
+                    "observados=%s",
+                    insertados,
+                    actualizados_pedidos,
+                    observados_sin_cambios,
                 )
 
-                return ResultadoSincronizacion(
-                    intentos=intentos,
-                    estado="SIN_REGISTROS",
+            else:
+                self.log.info(
+                    "No se encontraron pedidos recientes. "
+                    "Se continuará con facturación."
                 )
 
-            self.log.info(
-                "Extraídos %s registros de FoxPro",
-                extraidos,
+            # =====================================================
+            # PROCESO B: ENRIQUECIMIENTO DE FACTURACIÓN
+            # =====================================================
+
+            filas_facturas, intentos_facturas = (
+                ejecutar_con_reintentos(
+                    lambda: self.fox.extraer_facturas(
+                        fecha_desde_facturas
+                    ),
+                    self.cfg.reintentos_maximos,
+                    self.cfg.espera_segundos,
+                    self.fox.es_transitorio,
+                    self.log,
+                )
             )
 
-            pedidos = [
-                agregar_hash(
-                    normalizar_pedido(
+            intentos = max(
+                intentos,
+                intentos_facturas,
+            )
+
+            facturas_extraidas = len(
+                filas_facturas
+            )
+
+            if filas_facturas:
+                self.log.info(
+                    "Extraídas %s relaciones de "
+                    "facturación de FoxPro.",
+                    facturas_extraidas,
+                )
+
+                facturas_normalizadas = [
+                    normalizar_factura_pedido(
                         tuple(fila)
                     )
+                    for fila in filas_facturas
+                ]
+
+                facturas = consolidar_facturas(
+                    facturas_normalizadas
                 )
-                for fila in filas
-            ]
 
-            validar_lote(
-                pedidos,
-                self.cfg.lugar,
-                self.cfg.agentes,
+                validar_lote_facturas(
+                    facturas
+                )
+
+                self.log.info(
+                    "Facturas consolidadas | "
+                    "origen=%s | pedidos_unicos=%s",
+                    facturas_extraidas,
+                    len(facturas),
+                )
+
+                self.sql.cargar_staging_facturas(
+                    id_ejecucion,
+                    facturas,
+                )
+
+                (
+                    facturas_actualizadas,
+                    facturas_sin_cambios,
+                    facturas_sin_pedido,
+                ) = self.sql.sincronizar_facturas(
+                    id_ejecucion
+                )
+
+                self.log.info(
+                    "Facturación sincronizada | "
+                    "actualizadas=%s | sin_cambios=%s | "
+                    "sin_pedido=%s",
+                    facturas_actualizadas,
+                    facturas_sin_cambios,
+                    facturas_sin_pedido,
+                )
+
+            else:
+                self.log.info(
+                    "No se encontraron facturas recientes."
+                )
+
+            actualizados_totales = (
+                actualizados_pedidos
+                + facturas_actualizadas
             )
 
-            self.sql.cargar_staging(
-                id_ejecucion,
-                pedidos,
-            )
-
-            (
-                insertados,
-                actualizados,
-                observados_sin_cambios,
-            ) = self.sql.sincronizar(
-                id_ejecucion
-            )
-
-            self.log.info(
-                "Sincronización completada | "
-                "insertados=%s | "
-                "actualizados=%s | "
-                "observados=%s",
-                insertados,
-                actualizados,
-                observados_sin_cambios,
+            estado = (
+                "SIN_REGISTROS"
+                if extraidos == 0
+                and facturas_extraidas == 0
+                else "COMPLETADA"
             )
 
             self.sql.finalizar(
                 id_ejecucion,
-                estado="COMPLETADA",
-                extraidos=extraidos,
+                estado=estado,
+                extraidos=(
+                    extraidos
+                    + facturas_extraidas
+                ),
                 insertados=insertados,
-                actualizados=actualizados,
+                actualizados=actualizados_totales,
                 intentos=intentos,
             )
 
             return ResultadoSincronizacion(
                 extraidos=extraidos,
                 insertados=insertados,
-                actualizados=actualizados,
+                actualizados=actualizados_pedidos,
+                facturas_extraidas=(
+                    facturas_extraidas
+                ),
+                facturas_actualizadas=(
+                    facturas_actualizadas
+                ),
+                facturas_sin_cambios=(
+                    facturas_sin_cambios
+                ),
+                facturas_sin_pedido=(
+                    facturas_sin_pedido
+                ),
                 intentos=intentos,
-                estado="COMPLETADA",
+                estado=estado,
             )
 
         except Exception as e:
-
             if isinstance(
                 e,
                 (
@@ -215,16 +344,23 @@ class Sincronizador:
                 self.sql.finalizar(
                     id_ejecucion,
                     estado=estado_error,
-                    extraidos=extraidos,
+                    extraidos=(
+                        extraidos
+                        + facturas_extraidas
+                    ),
                     insertados=insertados,
-                    actualizados=actualizados,
+                    actualizados=(
+                        actualizados_pedidos
+                        + facturas_actualizadas
+                    ),
                     intentos=intentos,
                     error=mensaje_error,
                 )
 
             except Exception:
                 self.log.exception(
-                    "No fue posible actualizar la bitácora con el error"
+                    "No fue posible actualizar la "
+                    "bitácora con el error."
                 )
 
             raise

@@ -1,3 +1,8 @@
+/*
+    Script hasta 25/05/2026
+    actualmente en desuso, se remplaza por '009_reducir_procedimiento_pedidos.sql'
+*/
+
 USE IntegracionSAIEmp43;
 GO
 

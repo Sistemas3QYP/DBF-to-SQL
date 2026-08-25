@@ -32,11 +32,15 @@ def _cfg() -> ConfiguracionAplicacion:
     )
 
 class FoxProFalso:
-    def __init__(self, filas):
+    def __init__(self, filas, filas_facturas=None):
         self.filas = filas
+        self.filas_facturas = filas_facturas or []
 
     def extraer(self, fecha_desde):
         return self.filas
+
+    def extraer_facturas(self, fecha_desde):
+        return self.filas_facturas
 
     @staticmethod
     def es_transitorio(exc):
@@ -65,6 +69,12 @@ class SqlFalso:
         if self.staging_cargado is None:
             return 0, 0, 0
         return len(self.staging_cargado), 0, 0
+    
+    def cargar_staging_facturas(self, id_ejecucion, facturas):
+        self.facturas_staging = facturas
+
+    def sincronizar_facturas(self, id_ejecucion):
+        return 0, 0, 0
 
 def _logger():
     logger = logging.getLogger("test_sincronizador")
@@ -73,9 +83,15 @@ def _logger():
 
 def _fila_valida():
     return (
-        Decimal(10025), "001", "GENERAL", "1159", "ABIERTO", "SURTIDO",
-        "2026-08-10", "2026-08-12", Decimal(3101), Decimal(500),
-        Decimal("1250.500000"), Decimal(3101), Decimal(3102),
+        Decimal(10025),
+        "001",
+        "GENERAL",
+        "1159",
+        "ABIERTO",
+        "SURTIDO",
+        "2026-08-10",
+        Decimal(3101),
+        Decimal(500),
     )
 
 def test_primera_ejecucion_es_inicial():

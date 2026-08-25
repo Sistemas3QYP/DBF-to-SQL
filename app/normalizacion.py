@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Collection, Literal, overload
 import math
 from .excepciones import ErrorValidacionDatos
-from .modelos import Pedido
+from .modelos import FacturaPedido, Pedido
 
 
 def texto(v: Any, maximo: int, obligatorio: bool = True) -> str:
@@ -106,13 +106,14 @@ def dec(v: Any, precision: int, escala: int = 0, obligatorio: bool = False) -> D
     if escala < 0 or escala > precision:
         raise ValueError("escala debe estar entre cero y precision.")
 
+    if isinstance(v, bool):
+        raise ErrorValidacionDatos(f"Decimal inválido: {v}")
+
     vacio = v is None or v == ""
     if vacio:
         if obligatorio:
             raise ErrorValidacionDatos("Valor numérico obligatorio vacío")
         v = 0
-        if isinstance(v, bool):
-            raise ErrorValidacionDatos(f"Decimal inválido: {v}")
 
     try:
         if isinstance(v, Decimal):
@@ -162,14 +163,14 @@ def normalizar_pedido(
     fila: tuple[Any, ...],
 ) -> Pedido:
     """
-    Convierte una fila cruda de FoxPro (13 columnas) en un Pedido normalizado.
+    Convierte una fila cruda de FoxPro (9 columnas) en un Pedido normalizado.
     Orden esperado:
       no_ped, cve_suc, lugar, hora_ped, status, status2,
-      f_alta_ped, fecha_ent, cve_age, cve_cte, subt_ped, cvede4, cvede5
+      f_alta_ped, cve_age, cve_cte
     """
-    if len(fila) != 13:
+    if len(fila) != 9:
         raise ErrorValidacionDatos(
-            f"Se esperaban exactamente 13 columnas, pero se recibieron: {len(fila)}"
+            f"Se esperaban exactamente 9 columnas de pedido, pero se recibieron: {len(fila)}"
         )
 
     pedido = Pedido(
@@ -181,16 +182,164 @@ def normalizar_pedido(
         estatus=texto(fila[4], 15),
         estatus2=texto(fila[5], 15),
         fecha_alta_pedido=fecha(fila[6], obligatoria=True),
-        fecha_entrega=fecha(fila[7]),
-        clave_agente=dec(fila[8], 5, 0, obligatorio=True),
-        clave_cliente=dec(fila[9], 5, 0, obligatorio=True),
-        subtotal_pedido=dec(fila[10], 19, 6, obligatorio=True),
-        clave_vendedor4=dec(fila[11], 5, 0, obligatorio=True),
-        clave_vendedor5=dec(fila[12], 5, 0, obligatorio=True),
+        clave_agente=dec(fila[7], 5, 0, obligatorio=True),
+        clave_cliente=dec(fila[8], 5, 0, obligatorio=True),
     )
 
     _validar_no_negativos(pedido)
     return pedido
+
+
+def normalizar_factura_pedido(
+    fila: tuple[Any, ...],
+) -> FacturaPedido:
+    """
+    Convierte una fila de facturación en FacturaPedido.
+
+    Orden esperado:
+        no_ped,
+        cve_suc,
+        no_fac,
+        falta_fac,
+        hora_fac
+    """
+
+    if len(fila) != 5:
+        raise ErrorValidacionDatos(
+            "Se esperaban exactamente 5 columnas de facturación, "
+            f"pero se recibieron: {len(fila)}"
+        )
+
+    no_pedido = dec(
+        fila[0],
+        10,
+        0,
+        obligatorio=True,
+    )
+
+    clave_sucursal = texto(
+        fila[1],
+        3,
+    )
+
+    no_factura = texto(
+        fila[2],
+        10,
+    )
+
+    fecha_factura = fecha(
+        fila[3],
+        obligatoria=True,
+    )
+
+    hora_factura = hora(
+        fila[4],
+    )
+
+    if no_pedido <= 0:
+        raise ErrorValidacionDatos(
+            f"NoPedido de factura debe ser positivo: {no_pedido}"
+        )
+
+    return FacturaPedido(
+        no_pedido=no_pedido,
+        clave_sucursal=clave_sucursal,
+        no_factura=no_factura,
+        fecha_factura=fecha_factura,
+        hora_factura=hora_factura,
+    )
+
+
+def consolidar_facturas(
+    facturas: list[FacturaPedido],
+) -> list[FacturaPedido]:
+    """
+    Conserva una factura por pedido y sucursal.
+
+    Si existen varias facturas para el mismo pedido, conserva:
+    1. La de mayor FechaFactura.
+    2. La de mayor HoraFactura.
+    3. La de mayor NoFactura.
+    """
+
+    seleccionadas: dict[
+        tuple[Decimal, str],
+        FacturaPedido,
+    ] = {}
+
+    for factura in facturas:
+        llave = (
+            factura.no_pedido,
+            factura.clave_sucursal,
+        )
+
+        actual = seleccionadas.get(llave)
+
+        if actual is None:
+            seleccionadas[llave] = factura
+            continue
+
+        if _clave_orden_factura(
+            factura
+        ) > _clave_orden_factura(actual):
+            seleccionadas[llave] = factura
+
+    return sorted(
+        seleccionadas.values(),
+        key=lambda factura: (
+            factura.no_pedido,
+            factura.clave_sucursal,
+        ),
+    )
+
+
+def validar_lote_facturas(
+    facturas: list[FacturaPedido],
+) -> None:
+    """Valida el lote consolidado de facturas."""
+
+    vistos: set[tuple[Decimal, str]] = set()
+
+    for factura in facturas:
+        llave = (
+            factura.no_pedido,
+            factura.clave_sucursal,
+        )
+
+        if llave in vistos:
+            raise ErrorValidacionDatos(
+                "Llave de factura duplicada después de consolidar: "
+                f"{llave}"
+            )
+
+        vistos.add(llave)
+
+        if not factura.no_factura:
+            raise ErrorValidacionDatos(
+                f"NoFactura vacío para el pedido {llave}"
+            )
+
+        if len(factura.no_factura) > 10:
+            raise ErrorValidacionDatos(
+                "NoFactura excede diez caracteres: "
+                f"{factura.no_factura}"
+            )
+
+
+def _clave_orden_factura(
+    factura: FacturaPedido,
+) -> tuple[date, time, str]:
+    hora_orden = (
+        factura.hora_factura
+        if factura.hora_factura is not None
+        else time.min
+    )
+
+    return (
+        factura.fecha_factura,
+        hora_orden,
+        factura.no_factura,
+    )
 
 
 def validar_lote(
@@ -199,8 +348,8 @@ def validar_lote(
     agentes_permitidos: Collection[int],
 ) -> None:
     """
-    Validaciones de lote antes de cargar a staging:
-    - Sin llaves duplicadas
+    Valida lote de pedidos antes de cargarlo en staging:
+    - Sin llaves duplicadas - NoPed válido - Lugar esperado - Agente permitido
     - Todos los registros cumplen filtros de negocio
     """
     lugar_esperado = lugar_esperado.strip().upper()
@@ -216,6 +365,7 @@ def validar_lote(
 
         if p.no_pedido <= 0:
             raise ErrorValidacionDatos(f"no_pedido debe ser positivo: {llave}")
+        
         if p.lugar != lugar_esperado:
             raise ErrorValidacionDatos(
                 f"Registro con lugar distinto de {lugar_esperado}: {llave}"
@@ -228,13 +378,12 @@ def validar_lote(
         if len(p.hash_origen) != 32:
             raise ErrorValidacionDatos(f"Hash inválido en pedido {llave}.")
 
+
 def _validar_no_negativos(p: Pedido) -> None:
     campos = {
         "no_pedido": p.no_pedido,
         "clave_agente": p.clave_agente,
         "clave_cliente": p.clave_cliente,
-        "clave_vendedor4": p.clave_vendedor4,
-        "clave_vendedor5": p.clave_vendedor5,
     }
 
     for nombre, valor in campos.items():
