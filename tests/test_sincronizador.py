@@ -9,13 +9,13 @@ from app.sincronizador import Sincronizador
 
 def _cfg() -> ConfiguracionAplicacion:
     return ConfiguracionAplicacion(
-        ambiente="PRUEBAS",
-        empresa="EMP43",
-        dbc=Path("C:/VSAI/Empresas/EMP43/sai.DBC"),
+        ambiente="PRODUCCION",
+        empresa="EMP64",
+        dbc=Path("C:/VSAI/Empresas/EMP64/sai.DBC"),
         provider="VFPOLEDB.1",
         collating_sequence="Machine",
         sql_servidor="SRVERPQYPN\\SQLEXPRESS",
-        sql_base_datos="IntegracionSAIEmp43",
+        sql_base_datos="IntegracionSAIEmp64",
         sql_driver="ODBC Driver 18 for SQL Server",
         autenticacion_windows=True,
         encrypt=True,
@@ -32,11 +32,15 @@ def _cfg() -> ConfiguracionAplicacion:
     )
 
 class FoxProFalso:
-    def __init__(self, filas):
+    def __init__(self, filas, filas_facturas=None):
         self.filas = filas
+        self.filas_facturas = filas_facturas or []
 
     def extraer(self, fecha_desde):
         return self.filas
+
+    def extraer_facturas(self, fecha_desde):
+        return self.filas_facturas
 
     @staticmethod
     def es_transitorio(exc):
@@ -63,8 +67,14 @@ class SqlFalso:
 
     def sincronizar(self, id_ejecucion):
         if self.staging_cargado is None:
-            return 1, 0, 0
+            return 0, 0, 0
         return len(self.staging_cargado), 0, 0
+    
+    def cargar_staging_facturas(self, id_ejecucion, facturas):
+        self.facturas_staging = facturas
+
+    def sincronizar_facturas(self, id_ejecucion):
+        return 0, 0, 0
 
 def _logger():
     logger = logging.getLogger("test_sincronizador")
@@ -73,9 +83,15 @@ def _logger():
 
 def _fila_valida():
     return (
-        Decimal(10025), "001", "GENERAL", "1159", "ABIERTO", "SURTIDO",
-        "2026-08-10", "2026-08-12", Decimal(3101), Decimal(500),
-        Decimal("1250.500000"), Decimal(3101), Decimal(3102),
+        Decimal(10025),
+        "001",
+        "GENERAL",
+        "1159",
+        "ABIERTO",
+        "SURTIDO",
+        "2026-08-10",
+        Decimal(3101),
+        Decimal(500),
     )
 
 def test_primera_ejecucion_es_inicial():

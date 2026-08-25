@@ -12,12 +12,8 @@ def _pedido_ejemplo() -> Pedido:
         estatus="ABIERTO",
         estatus2="SURTIDO",
         fecha_alta_pedido=date(2026, 8, 10),
-        fecha_entrega=date(2026, 8, 12),
         clave_agente=Decimal(3101),
         clave_cliente=Decimal(500),
-        subtotal_pedido=Decimal("1250.500000"),
-        clave_vendedor4=Decimal(3101),
-        clave_vendedor5=Decimal(3102),
     )
 
 def test_hash_tiene_32_bytes():
@@ -26,9 +22,14 @@ def test_hash_tiene_32_bytes():
     assert isinstance(p.hash_origen, bytes)
 
 def test_canonico_estable():
-    c = canonico(_pedido_ejemplo())
-    assert c.startswith("v1.0|10025|001|GENERAL|11:59:00|")
-    assert c.endswith("1250.500000|3101|3102")
+    valor = canonico(
+        _pedido_ejemplo()
+    )
+
+    assert valor == (
+        "v2.0|10025|001|GENERAL|11:59:00|"
+        "ABIERTO|SURTIDO|2026-08-10|3101|500"
+    )
 
 def test_mismo_pedido_mismo_hash():
     a = agregar_hash(_pedido_ejemplo())

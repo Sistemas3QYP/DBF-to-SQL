@@ -1,9 +1,10 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import date, time
 from decimal import Decimal
 from pathlib import Path
-from typing import ClassVar
+
 
 @dataclass(frozen=True, slots=True)
 class ConfiguracionAplicacion:
@@ -28,6 +29,7 @@ class ConfiguracionAplicacion:
     lock_max_minutos: int
     retencion_staging_dias: int
 
+
 @dataclass(frozen=True, slots=True)
 class Pedido:
     no_pedido: Decimal
@@ -37,18 +39,28 @@ class Pedido:
     estatus: str
     estatus2: str
     fecha_alta_pedido: date
-    fecha_entrega: date | None
     clave_agente: Decimal
     clave_cliente: Decimal
-    subtotal_pedido: Decimal
-    clave_vendedor4: Decimal
-    clave_vendedor5: Decimal
     hash_origen: bytes = b""
+
+
+@dataclass(frozen=True, slots=True)
+class FacturaPedido:
+    no_pedido: Decimal
+    clave_sucursal: str
+    no_factura: str
+    fecha_factura: date
+    hora_factura: time | None
+
 
 @dataclass(frozen=True, slots=True)
 class ResultadoSincronizacion:
     extraidos: int = 0
     insertados: int = 0
     actualizados: int = 0
+    facturas_extraidas: int = 0
+    facturas_actualizadas: int = 0
+    facturas_sin_cambios: int = 0
+    facturas_sin_pedido: int = 0
     intentos: int = 1
     estado: str = "COMPLETADA"

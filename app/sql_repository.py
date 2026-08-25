@@ -12,7 +12,13 @@ from .excepciones import (
     ErrorConexionSQL,
     ErrorSincronizacionSQL,
 )
-from .modelos import ConfiguracionAplicacion, Pedido
+
+from .modelos import (
+    ConfiguracionAplicacion,
+    FacturaPedido,
+    Pedido,
+)
+
 
 class SqlRepository:
     def __init__(
@@ -245,18 +251,13 @@ class SqlRepository:
                             Estatus,
                             Estatus2,
                             FechaAltaPedido,
-                            FechaEntrega,
                             ClaveAgente,
                             ClaveCliente,
-                            SubtotalPedido,
-                            ClaveVendedor4,
-                            ClaveVendedor5,
                             HashOrigen
                         )
                         VALUES
                         (
-                            ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                            ?, ?, ?, ?, ?, ?
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                         );
                     """
 
@@ -270,12 +271,8 @@ class SqlRepository:
                             p.estatus,
                             p.estatus2,
                             p.fecha_alta_pedido,
-                            p.fecha_entrega,
                             p.clave_agente,
                             p.clave_cliente,
-                            p.subtotal_pedido,
-                            p.clave_vendedor4,
-                            p.clave_vendedor5,
                             p.hash_origen,
                         )
                         for p in pedidos
@@ -398,4 +395,146 @@ class SqlRepository:
             raise ErrorConexionSQL(
                 "No fue posible consultar el historial "
                 f"de ejecuciones: {e}"
+            ) from e
+
+    def cargar_staging_facturas(
+        self,
+        id_ejecucion: UUID,
+        facturas: list[FacturaPedido],
+    ) -> None:
+        if not facturas:
+            return
+
+        try:
+            with self._conexion() as conn:
+                cur = conn.cursor()
+
+                try:
+                    cur.execute(
+                        """
+                        DELETE
+                        FROM integracion.FacturaPedidoSAI_Staging
+                        WHERE IdEjecucion = ?;
+                        """,
+                        id_ejecucion,
+                    )
+
+                    sql_insert = """
+                        INSERT INTO
+                            integracion.FacturaPedidoSAI_Staging
+                        (
+                            IdEjecucion,
+                            NoPedido,
+                            ClaveSucursal,
+                            NoFactura,
+                            FechaFactura,
+                            HoraFactura
+                        )
+                        VALUES
+                        (
+                            ?, ?, ?, ?, ?, ?
+                        );
+                    """
+
+                    filas = [
+                        (
+                            id_ejecucion,
+                            factura.no_pedido,
+                            factura.clave_sucursal,
+                            factura.no_factura,
+                            factura.fecha_factura,
+                            factura.hora_factura,
+                        )
+                        for factura in facturas
+                    ]
+
+                    cur.fast_executemany = True
+                    tam = self.cfg.tamano_lote
+
+                    for inicio in range(
+                        0,
+                        len(filas),
+                        tam,
+                    ):
+                        lote = filas[
+                            inicio:inicio + tam
+                        ]
+
+                        cur.executemany(
+                            sql_insert,
+                            lote,
+                        )
+
+                    conn.commit()
+
+                except Exception:
+                    conn.rollback()
+                    raise
+
+                finally:
+                    cur.close()
+
+        except ErrorConexionSQL:
+            raise
+
+        except Exception as e:
+            raise ErrorCargaStaging(
+                "Falló la carga de facturas "
+                f"en staging: {e}"
+            ) from e
+
+    def sincronizar_facturas(
+        self,
+        id_ejecucion: UUID,
+    ) -> tuple[int, int, int]:
+        try:
+            with self._conexion() as conn:
+                cur = conn.cursor()
+
+                try:
+                    cur.execute(
+                        """
+                        EXEC integracion.SyncFacturasPedidoSAI
+                            @IdEjecucion = ?;
+                        """,
+                        id_ejecucion,
+                    )
+
+                    fila = cur.fetchone()
+
+                    if fila is None:
+                        raise ErrorSincronizacionSQL(
+                            "El procedimiento de facturación "
+                            "no devolvió resultados."
+                        )
+
+                    actualizados = int(fila[0])
+                    sin_cambios = int(fila[1])
+                    sin_pedido = int(fila[2])
+
+                    conn.commit()
+
+                    return (
+                        actualizados,
+                        sin_cambios,
+                        sin_pedido,
+                    )
+
+                except Exception:
+                    conn.rollback()
+                    raise
+
+                finally:
+                    cur.close()
+
+        except ErrorConexionSQL:
+            raise
+
+        except ErrorSincronizacionSQL:
+            raise
+
+        except Exception as e:
+            raise ErrorSincronizacionSQL(
+                "Falló SyncFacturasPedidoSAI: "
+                f"{e}"
             ) from e
